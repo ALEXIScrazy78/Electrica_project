@@ -136,6 +136,7 @@ export default function App() {
         body: JSON.stringify(inputs)
       });
       
+      
       if (!response.ok) {
         const errData = await response.json();
         throw new Error(errData.detail || "Error en los cálculos del servidor.");
