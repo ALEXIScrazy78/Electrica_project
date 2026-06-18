@@ -130,7 +130,7 @@ export default function App() {
     setLoading(true);
 
     try {
-      const response = await fetch('https://electrica-backend.onrender.com/api/calcular', {
+      const response = await fetch('https://electrica-project.onrender.com/api/calcular', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(inputs)
