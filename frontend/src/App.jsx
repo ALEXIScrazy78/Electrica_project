@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid, Html } from '@react-three/drei';
 
@@ -69,7 +69,6 @@ function EscenaMalla({ Lx, Ly, h, nr, Lr }) {
             <cylinderGeometry args={[0.05, 0.05, largoVarilla, 8]} />
             <meshStandardMaterial color="#ffe033" emissive="#221800" />
             
-            {/* Colocamos una etiqueta informativa solo en la primera y última varilla para no saturar la pantalla */}
             {(idx === 0 || idx === nr - 1) && (
               <Html position={[0, -largoVarilla / 4, 0]} distanceFactor={15} center>
                 <div className="bg-[#1f1600]/90 border border-[#ffe033] text-[#ffe033] text-[9px] font-mono px-1.5 py-0.5 rounded whitespace-nowrap pointer-events-none">
@@ -87,7 +86,7 @@ function EscenaMalla({ Lx, Ly, h, nr, Lr }) {
 }
 
 // ============================================================================
-// INTERFAZ DE USUARIO CON VALIDACIONES PASO A PASO
+// INTERFAZ DE USUARIO CON DISPARADOR POR BOTÓN
 // ============================================================================
 export default function App() {
   const [inputs, setInputs] = useState({
@@ -101,19 +100,18 @@ export default function App() {
 
   const handleChange = (e) => {
     const { id, value } = e.target;
-    // Permitir escribir valores intermedios (como cadenas vacías o puntos), pero guardamos el float
     setInputs(prev => ({ ...prev, [id]: value === '' ? '' : parseFloat(value) }));
   };
 
   // Validar entradas antes de mandarlas a la API de Python
   const validarCampos = () => {
-    if (inputs.rho <= 0) return "La resistividad (rho) debe ser mayor a 0 Ω·m.";
-    if (inputs.seccion <= 0) return "La sección del conductor debe ser mayor a 0 mm².";
-    if (inputs.Lx <= 0 || inputs.Ly <= 0) return "Las dimensiones de la malla (Lx, Ly) deben ser mayores a 0 metros.";
-    if (inputs.h <= 0) return "La profundidad (h) debe ser un valor positivo mayor a 0.";
-    if (inputs.rlim <= 0) return "El límite admisible debe ser mayor a 0 Ω.";
-    if (inputs.nr <= 0) return "El número de varillas (nr) debe ser al menos 1.";
-    if (inputs.Lr <= 0) return "La longitud de varilla (Lr) debe ser mayor a 0 metros.";
+    if (inputs.rho <= 0 || inputs.rho === '') return "La resistividad (rho) debe ser mayor a 0 Ω·m.";
+    if (inputs.seccion <= 0 || inputs.seccion === '') return "La sección del conductor debe ser mayor a 0 mm².";
+    if (inputs.Lx <= 0 || inputs.Ly <= 0 || inputs.Lx === '' || inputs.Ly === '') return "Las dimensiones de la malla (Lx, Ly) deben ser mayores a 0 metros.";
+    if (inputs.h <= 0 || inputs.h === '') return "La profundidad (h) debe ser un valor positivo mayor a 0.";
+    if (inputs.rlim <= 0 || inputs.rlim === '') return "El límite admisible debe ser mayor a 0 Ω.";
+    if (inputs.nr <= 0 || inputs.nr === '') return "El número de varillas (nr) debe ser al menos 1.";
+    if (inputs.Lr <= 0 || inputs.Lr === '') return "La longitud de varilla (Lr) debe ser mayor a 0 metros.";
     return "";
   };
 
@@ -136,7 +134,6 @@ export default function App() {
         body: JSON.stringify(inputs)
       });
       
-      
       if (!response.ok) {
         const errData = await response.json();
         throw new Error(errData.detail || "Error en los cálculos del servidor.");
@@ -151,16 +148,6 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    const delayDebounce = setTimeout(() => {
-      // Solo consultar si ningún campo está vacío temporalmente mientras el usuario escribe
-      if (Object.values(inputs).every(v => v !== '')) {
-        consultarBackend();
-      }
-    }, 400);
-    return () => clearTimeout(delayDebounce);
-  }, [inputs]);
-
   return (
     <div className="flex flex-col lg:flex-row h-screen w-screen overflow-hidden font-sans bg-[#050b03] text-[#e8f5c0]">
       
@@ -168,7 +155,7 @@ export default function App() {
       <div className="w-full lg:w-[450px] bg-[#0f1a0a] border-r border-[#2a3d10] p-6 overflow-y-auto flex flex-col gap-5">
         <div>
           <h2 className="text-xl font-bold text-[#a3e635] tracking-wide">⚡ Puesta a Tierra 3D</h2>
-          <p className="text-xs text-[#7aad3a]">Filtro de Seguridad y Etiquetas Activas</p>
+          <p className="text-xs text-[#7aad3a]">Cálculo Bajo Demanda (Control por Botón)</p>
         </div>
 
         {/* Formulario Dinámico */}
@@ -190,16 +177,29 @@ export default function App() {
           ))}
         </div>
 
+        {/* BOTÓN DE DISPARO DE CÁLCULO */}
+        <button
+          onClick={consultarBackend}
+          disabled={loading}
+          className={`w-full py-2.5 rounded font-sans font-bold text-xs uppercase tracking-wider transition-colors duration-200 ${
+            loading 
+              ? 'bg-[#1a2d12] text-[#527d21] cursor-not-allowed' 
+              : 'bg-[#a3e635] text-[#050b03] hover:bg-[#bbf746] active:bg-[#8ec22f]'
+          }`}
+        >
+          {loading ? '⚡ Calculando...' : 'Calcular Parámetros'}
+        </button>
+
         {/* ALERTAS DE ERROR / CONTROL */}
         {errorValidacion && (
-          <div className="text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded p-2.5 animate-pulse">
-             {errorValidacion}
+          <div className="text-xs text-amber-400 bg-amber-950/40 border border-amber-900 rounded p-2.5">
+            ⚠️ {errorValidacion}
           </div>
         )}
 
         {errorApi && (
           <div className="text-xs text-red-400 bg-red-950/40 border border-red-900 rounded p-2.5">
-             Backend: {errorApi}
+            Backend: {errorApi}
           </div>
         )}
 
@@ -227,14 +227,13 @@ export default function App() {
         )}
       </div>
 
-      {/* VISOR 3D CON RENDERING DE TEXTO */}
+      {/* VISOR 3D (Se actualiza fluido con los inputs de forma local) */}
       <div className="flex-1 h-full relative bg-[#050b03]">
         <div className="absolute top-4 left-4 z-10 pointer-events-none bg-[#0f1a0a]/80 backdrop-blur border border-[#2a3d10] rounded px-3 py-2 text-xs">
           <p className="text-[#a3e635] font-semibold">SIMULADOR GEOMÉTRICO 3D</p>
-          <p className="text-[#7aad3a] text-[11px]">Las etiquetas flotantes se orientan automáticamente.</p>
+          <p className="text-[#7aad3a] text-[11px]">Las dimensiones visuales cambian al escribir. Los cálculos matemáticos requieren presionar el botón.</p>
         </div>
         
-        {/* Renderizado condicional para evitar romper las geometrías de Three.js si hay inputs corruptos */}
         {!errorValidacion ? (
           <Canvas camera={{ position: [12, 10, 12], fov: 50 }}>
             <EscenaMalla Lx={inputs.Lx || 1} Ly={inputs.Ly || 1} h={inputs.h || 0} nr={inputs.nr || 0} Lr={inputs.Lr || 0} />
