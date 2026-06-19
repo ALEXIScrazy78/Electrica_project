@@ -76,10 +76,10 @@ function EscenaMalla({ Lx, Ly, h, nr, Lr }) {
 }
 
 // ============================================================================
-// APLICACIÓN PRINCIPAL
+// APLICACIÓN PRINCIPAL CON DESGLOSE TÉCNICO COMPLETO (IEEE-80)
 // ============================================================================
 export default function App() {
-  // Lista dinámica de mediciones de campo (Wenner)
+  // Datos iniciales idénticos al Colab
   const [mediciones, setMediciones] = useState([
     { a: 2, R: 7.56 },
     { a: 4, R: 3.98 },
@@ -90,7 +90,6 @@ export default function App() {
     { a: 20, R: 1.01 }
   ]);
 
-  // Parámetros de diseño geométrico preliminar
   const [params, setParams] = useState({
     Lx: 80, Ly: 50, D: 10, h: 0.6, nr: 14, Lr: 3, rlim: 5
   });
@@ -99,7 +98,6 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [errorApi, setErrorApi] = useState("");
 
-  // Manejadores de cambios
   const handleParamChange = (e) => {
     const { id, value } = e.target;
     setParams(prev => ({ ...prev, [id]: value === '' ? '' : parseFloat(value) }));
@@ -127,7 +125,6 @@ export default function App() {
     setErrorApi("");
     setLoading(true);
 
-    // Estructurar el cuerpo exactamente como pide la nueva API
     const payload = {
       mediciones: mediciones.filter(m => m.a > 0 && m.R > 0),
       ...params
@@ -155,6 +152,21 @@ export default function App() {
     }
   };
 
+  // Helper local para recalcular términos intermedios de Sverak que la API procesa,
+  // asegurando el desglose exacto que tenías en Javascript nativo.
+  const desglosesSverak = useMemo(() => {
+    if (!resultados) return null;
+    const { A } = resultados.sverak;
+    const { h } = params;
+    
+    const raiz20A = Math.sqrt(20 * A);
+    const raiz20_A = Math.sqrt(20 / A);
+    const hfac = h * raiz20_A;
+    const paren = 1 + 1 / (1 + hfac);
+    
+    return { raiz20A, raiz20_A, hfac, paren };
+  }, [resultados, params]);
+
   return (
     <div className="flex flex-col lg:flex-row h-screen w-screen overflow-hidden font-sans bg-[#050b03] text-[#e8f5c0]">
       
@@ -165,7 +177,7 @@ export default function App() {
           <p className="text-xs text-[#7aad3a]">Análisis Avanzado IEEE-80 (Wenner + Sverak)</p>
         </div>
 
-        {/* SECCIÓN 1: TABLA WENNER */}
+        {/* 1. MEDICIONES DE CAMPO */}
         <div>
           <div className="text-[11px] font-bold uppercase tracking-wider text-[#7aad3a] border-b border-[#2a3d10] pb-1 mb-2">
             1. Mediciones de Campo (Método Wenner)
@@ -176,7 +188,7 @@ export default function App() {
                 <th className="py-1 w-10">N°</th>
                 <th className="py-1">a [m]</th>
                 <th className="py-1">R [Ω]</th>
-                <th className="py-1 text-center">Acción</th>
+                <th className="py-1 text-center"></th>
               </tr>
             </thead>
             <tbody>
@@ -221,7 +233,7 @@ export default function App() {
           </button>
         </div>
 
-        {/* SECCIÓN 2: PARÁMETROS GEOMÉTRICOS */}
+        {/* 2. PARÁMETROS GEOMÉTRICOS */}
         <div>
           <div className="text-[11px] font-bold uppercase tracking-wider text-[#7aad3a] border-b border-[#2a3d10] pb-1 mb-2">
             2. Parámetros del Diseño Preliminar
@@ -252,7 +264,7 @@ export default function App() {
             loading ? 'bg-[#1a2d12] text-[#527d21] cursor-not-allowed' : 'bg-[#a3e635] text-[#0f1a0a] hover:bg-[#c6f135]'
           }`}
         >
-          {loading ? '⚡ Calculando con Servidor...' : 'Calcular Estructura Terrestre'}
+          {loading ? '⚡ Calculando...' : 'Calcular'}
         </button>
 
         {errorApi && (
@@ -261,43 +273,102 @@ export default function App() {
           </div>
         )}
 
-        {/* SECCIÓN 3: COMPILADO DE RESULTADOS IEEE-80 */}
-        {resultados && !loading && (
-          <div className="flex flex-col gap-4 animate-fadeIn">
-            {/* CAJA RESISTIVIDAD */}
-            <div className="bg-[#050b03] border border-[#2a3d10] p-3 rounded font-mono text-xs flex flex-col gap-1.5">
-              <div className="text-[#a3e635] font-sans font-semibold uppercase text-[10px]">Paso 1 — Diseño del Terreno</div>
-              <div className="text-2xl font-bold text-[#e8f5c0]">{resultados.wenner.rho_promedio.toFixed(2)} <span className="text-xs text-[#7aad3a]">Ω·m</span></div>
-              <div className="flex justify-between text-[#7aad3a]">Variación (Δ%): <span>{resultados.wenner.delta_pct.toFixed(2)} %</span></div>
+        {/* ==================================================================== */}
+        {/* REPORTES COMPLETOS INTEGRADOS DESPUÉS DEL CÁLCULO */}
+        {/* ==================================================================== */}
+        {resultados && !loading && desglosesSverak && (
+          <div className="flex flex-col gap-3 font-mono text-[11px] animate-fadeIn">
+            
+            {/* PASO 1: DETALLE WENNER */}
+            <div className="bg-[#050b03] border border-[#2a3d10] p-4 rounded-lg flex flex-col gap-1">
+              <div className="text-[#a3e635] font-sans font-bold uppercase border-b border-[#162a0c] pb-1 mb-1">
+                Paso 1 — Resistividad aparente (Wenner: ρa = 2π·a·R)
+              </div>
+              {resultados.wenner.detalle.map((d, i) => (
+                <div key={i} className="flex justify-between border-b border-[#162a0c]/40 py-0.5 text-[#7aad3a]">
+                  <span>Medición {i+1}: a={d.a} m, R={d.R} Ω → ρa = 2π·a·R</span>
+                  <span className="text-[#ffe033]">{d.rho_a.toFixed(2)} Ω·m</span>
+                </div>
+              ))}
+            </div>
+
+            {/* RESISTIVIDAD DE DISEÑO */}
+            <div className="bg-[#050b03] border border-[#a3e635] p-4 rounded-lg flex flex-col gap-1.5">
+              <div className="text-[#7aad3a] font-sans font-semibold uppercase">Resistividad de diseño del terreno</div>
+              <div className="text-3xl font-bold text-[#e8f5c0] my-0.5">
+                {resultados.wenner.rho_promedio.toFixed(2)} <span className="text-xs text-[#7aad3a]">Ω·m</span>
+              </div>
+              <div className="flex justify-between text-[#7aad3a]">ρ máx <span className="text-[#e8f5c0]">{resultados.wenner.rho_max.toFixed(2)} Ω·m</span></div>
+              <div className="flex justify-between text-[#7aad3a]">ρ mín <span className="text-[#e8f5c0]">{resultados.wenner.rho_min.toFixed(2)} Ω·m</span></div>
+              <div className="flex justify-between text-[#7aad3a]">
+                Variación relativa Δ% = (ρmax−ρmin)/ρ × 100 
+                <span className="text-[#ffe033]">{resultados.wenner.delta_pct.toFixed(2)} %</span>
+              </div>
               <div className="mt-1">
                 {resultados.wenner.uniforme ? (
-                  <span className="bg-[#1a3a0a] text-[#a3e635] border border-[#a3e635] text-[10px] px-2 py-0.5 rounded">✔ Suelo Uniforme (&lt;30%)</span>
+                  <span className="inline-block bg-[#1a3a0a] text-[#a3e635] border border-[#a3e635] rounded px-2 py-0.5 text-[10px]">
+                    ✔ Suelo uniforme (Δ{resultados.wenner.delta_pct.toFixed(2)}% &lt; 30%)
+                  </span>
                 ) : (
-                  <span className="bg-[#3a2a00] text-[#ffe033] border border-[#ffe033] text-[10px] px-2 py-0.5 rounded">⚠ Suelo No Uniforme (≥30%)</span>
+                  <span className="inline-block bg-[#3a2a00] text-[#ffe033] border border-[#ffe033] rounded px-2 py-0.5 text-[10px]">
+                    ⚠ Suelo NO uniforme (Δ{resultados.wenner.delta_pct.toFixed(2)}% ≥ 30%)
+                  </span>
                 )}
               </div>
             </div>
 
-            {/* CAJA GEOMETRÍA SVERAK */}
-            <div className="bg-[#050b03] border border-[#2a3d10] p-3 rounded font-mono text-xs flex flex-col gap-1">
-              <div className="text-[#a3e635] font-sans font-semibold uppercase text-[10px]">Paso 2 — Desglose de Conductores</div>
-              <div className="flex justify-between text-[#7aad3a]">Longitud Malla (Lc): <span>{resultados.sverak.Lc.toFixed(2)} m</span></div>
-              <div className="flex justify-between text-[#7aad3a]">Longitud Varillas: <span>{resultados.sverak.Lr_tot.toFixed(2)} m</span></div>
-              <div className="flex justify-between text-[#7aad3a] font-bold border-t border-[#162a0c] pt-1 mt-1 text-[#e8f5c0]">LT Enterrada Total: <span>{resultados.sverak.LT.toFixed(2)} m</span></div>
+            {/* PASO 2: LONGITUDES */}
+            <div className="bg-[#050b03] border border-[#2a3d10] p-4 rounded-lg flex flex-col gap-1">
+              <div className="text-[#a3e635] font-sans font-bold uppercase border-b border-[#162a0c] pb-1 mb-1">
+                Paso 2 — Longitudes de conductores y varillas
+              </div>
+              <div className="flex justify-between text-[#7aad3a]">N1 = Ly/D + 1 (conductores paralelos a Lx) <span className="text-[#e8f5c0]">{resultados.sverak.N1.toFixed(3)}</span></div>
+              <div className="flex justify-between text-[#7aad3a]">L1 = N1 × Lx <span className="text-[#e8f5c0]">{resultados.sverak.L1.toFixed(2)} m</span></div>
+              <div className="flex justify-between text-[#7aad3a]">N2 = Lx/D + 1 (conductores paralelos a Ly) <span className="text-[#e8f5c0]">{resultados.sverak.N2.toFixed(3)}</span></div>
+              <div className="flex justify-between text-[#7aad3a]">L2 = N2 × Ly <span className="text-[#e8f5c0]">{resultados.sverak.L2.toFixed(2)} m</span></div>
+              <div className="flex justify-between text-[#7aad3a]">Lc = L1 + L2 (long. horizontal total) <span className="text-[#e8f5c0]">{resultados.sverak.Lc.toFixed(2)} m</span></div>
+              <div className="flex justify-between text-[#7aad3a]">Lr,tot = nr × Lr (long. total de varillas) <span className="text-[#e8f5c0]">{resultados.sverak.Lr_tot.toFixed(2)} m</span></div>
+              <div className="flex justify-between text-[#7aad3a] font-bold text-[#e8f5c0] border-t border-[#162a0c] pt-1 mt-0.5">
+                LT = Lc + Lr,tot (longitud total enterrada) <span>{resultados.sverak.LT.toFixed(2)} m</span>
+              </div>
+              <div className="flex justify-between text-[#7aad3a]">A = Lx × Ly (área de la malla) <span className="text-[#ffe033]">{resultados.sverak.A.toFixed(2)} m²</span></div>
             </div>
 
-            {/* CAJA MARCO FINAL */}
-            <div className="bg-[#050b03] border-2 border-[#a3e635] p-4 rounded-lg font-mono text-xs">
-              <div className="text-[#a3e635] font-sans font-semibold uppercase text-[10px]">Paso 3 — Resistencia de Malla (Sverak)</div>
-              <div className="text-3xl font-black text-[#e8f5c0] my-1">{resultados.sverak.Rg.toFixed(4)} <span className="text-sm font-normal text-[#7aad3a]">Ω</span></div>
-              <div className="mt-2">
-                {resultados.cumple ? (
-                  <span className="bg-[#1a3a0a] text-[#a3e635] border border-[#a3e635] font-sans px-3 py-1 rounded text-xs font-bold">✔ SISTEMA ADMISIBLE</span>
-                ) : (
-                  <span className="bg-red-950/60 text-red-400 border border-red-900 font-sans px-3 py-1 rounded text-xs font-bold">✘ EXCEDE EL LÍMITE</span>
-                )}
+            {/* PASO 3: SVERAK INTERMEDIO Y Rg */}
+            <div className="bg-[#050b03] border border-[#2a3d10] p-4 rounded-lg flex flex-col gap-1">
+              <div className="text-[#a3e635] font-sans font-bold uppercase border-b border-[#162a0c] pb-1 mb-1">
+                Paso 3 — Resistencia de puesta a tierra (Sverak)
+              </div>
+              <div className="flex justify-between text-[#7aad3a]">Término 1 = 1/LT <span className="text-[#e8f5c0]">{resultados.sverak.term1.toFixed(7)}</span></div>
+              <div className="flex justify-between text-[#7aad3a]">√(20·A) <span className="text-[#e8f5c0]">{desglosesSverak.raiz20A.toFixed(3)}</span></div>
+              <div className="flex justify-between text-[#7aad3a]">√(20/A) <span className="text-[#e8f5c0]">{desglosesSverak.raiz20_A.toFixed(6)}</span></div>
+              <div className="flex justify-between text-[#7aad3a]">h·√(20/A) <span className="text-[#e8f5c0]">{desglosesSverak.hfac.toFixed(5)}</span></div>
+              <div className="flex justify-between text-[#7aad3a]">1 + 1/(1 + h·√(20/A)) <span className="text-[#e8f5c0]">{desglosesSverak.paren.toFixed(5)}</span></div>
+              <div className="flex justify-between text-[#7aad3a]">Término 2 = (1/√(20A)) × [1+1/(1+h√(20/A))] <span className="text-[#e8f5c0]">{resultados.sverak.term2.toFixed(7)}</span></div>
+              
+              <div className="border-t border-[#2a3d10] mt-2 pt-2">
+                <div className="text-[#7aad3a] font-sans text-[10px]">Resistencia de puesta a tierra Rg = ρ × [Término1 + Término2]</div>
+                <div className="text-3xl font-black text-[#ffe033] mt-0.5">
+                  {resultados.sverak.Rg.toFixed(4)} <span className="text-sm font-normal text-[#7aad3a]">Ω</span>
+                </div>
               </div>
             </div>
+
+            {/* ECUACIONES APLICADAS */}
+            <div className="bg-[#080f04] border border-[#1e3210] p-3 rounded-md text-[#4a7a2a] leading-relaxed text-[10px]">
+              <div className="text-[#a3e635] font-sans font-bold uppercase mb-1">Ecuaciones aplicadas (IEEE-80)</div>
+              <p><b>Wenner (simplificada)</b>: ρa = 2π·a·R</p>
+              <p><b>ρ diseño</b> = (ρa1+ρa2+...+ρan) / n</p>
+              <p><b>Criterio uniformidad</b>: Δ% = (ρmax−ρmin)/ρ × 100 &lt; 30%</p>
+              <p><b>N1</b> = Ly/D + 1 → <b>L1</b> = N1 × Lx</p>
+              <p><b>N2</b> = Lx/D + 1 → <b>L2</b> = N2 × Ly</p>
+              <p><b>Lc</b> = L1 + L2</p>
+              <p><b>Lr,tot</b> = nr × Lr</p>
+              <p><b>LT</b> = Lc + Lr,tot</p>
+              <p><b>A</b> = Lx × Ly</p>
+              <p><b>Rg (Sverak)</b> = ρ·[ 1/LT + (1/√(20A))·(1 + 1/(1+h√(20/A))) ]</p>
+            </div>
+
           </div>
         )}
       </div>
@@ -305,8 +376,8 @@ export default function App() {
       {/* VISOR 3D FLUIDO */}
       <div className="flex-1 h-full relative bg-[#050b03]">
         <div className="absolute top-4 left-4 z-10 pointer-events-none bg-[#0f1a0a]/80 backdrop-blur border border-[#2a3d10] rounded px-3 py-2 text-xs">
-          <p className="text-[#a3e635] font-semibold">VISOR TOPOLÓGICO 3D (IEEE-80)</p>
-          <p className="text-[#7aad3a] text-[11px]">La geometría se altera dinámicamente con los inputs locales de Lx, Ly y Varillas.</p>
+          <p className="text-[#a3e635] font-semibold">SIMULADOR GEOMÉTRICO 3D</p>
+          <p className="text-[#7aad3a] text-[11px]">Las dimensiones visuales cambian al escribir. Los cálculos matemáticos requieren presionar el botón.</p>
         </div>
 
         <Canvas camera={{ position: [14, 11, 14], fov: 45 }}>
