@@ -1,115 +1,118 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from typing import List
 import math
 
-# Inicializar la aplicación de FastAPI
 app = FastAPI(
-    title="API de Puesta a Tierra - Método de Schwarz",
-    description="Backend en Python para el cálculo de resistencia de malla con varillas.",
-    version="1.0.0"
+    title="API de Puesta a Tierra - IEEE-80 (Wenner + Sverak)",
+    description="Backend para cálculo de resistividad de diseño y resistencia de malla según IEEE-80.",
+    version="2.0.0"
 )
 
-# -----------------------------------------------------------------------------
-# CONFIGURACIÓN DE CORS (Control de Acceso de Origen Cruzado)
-# -----------------------------------------------------------------------------
-# Esto permite que tu aplicación de React (que corre en http://localhost:5173)
-# pueda hacer peticiones a este servidor de Python sin bloqueos de seguridad.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En desarrollo permite todo. En producción pon la URL de tu web.
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # -----------------------------------------------------------------------------
-# MODELO DE DATOS (Validación con Pydantic)
+# MODELOS DE ENTRADA (Validación con Pydantic)
 # -----------------------------------------------------------------------------
-class DatosMalla(BaseModel):
-    rho: float = Field(..., description="Resistividad del suelo [Ω·m]", gt=0)
-    seccion: float = Field(..., description="Sección del conductor [mm²]", gt=0)
-    Lx: float = Field(..., description="Longitud de la malla [m]", gt=0)
-    Ly: float = Field(..., description="Ancho de la malla [m]", gt=0)
+class MedicionWenner(BaseModel):
+    a: float = Field(..., description="Espaciado entre electrodos [m]", gt=0)
+    R: float = Field(..., description="Resistencia medida de campo [Ω]", gt=0)
+
+class DatosDiseno(BaseModel):
+    mediciones: List[MedicionWenner] = Field(..., description="Lista de mediciones de campo")
+    Lx: float = Field(..., description="Largo del terreno [m]", gt=0)
+    Ly: float = Field(..., description="Ancho del terreno [m]", gt=0)
+    D: float = Field(..., description="Separación entre conductores de la malla [m]", gt=0)
     h: float = Field(..., description="Profundidad de enterramiento [m]", gt=0)
-    rlim: float = Field(..., description="Límite admisible de resistencia [Ω]", gt=0)
-    nr: int = Field(..., description="Número de varillas", gt=0)
-    Lr: float = Field(..., description="Longitud de cada varilla [m]", gt=0)
+    nr: int = Field(..., description="Número de varillas", ge=0)
+    Lr: float = Field(..., description="Longitud de cada varilla [m]", ge=0)
+    rlim: float = Field(5.0, description="Límite admisible de resistencia [Ω]", gt=0)
 
 # -----------------------------------------------------------------------------
-# ENDPOINT DE CÁLCULO
+# ENDPOINT DE CÁLCULO MIGRADO
 # -----------------------------------------------------------------------------
 @app.post("/api/calcular")
-def calcular_schwarz(datos: DatosMalla):
+def calcular_puesta_a_tierra(datos: DatosDiseno):
+    if len(datos.mediciones) < 2:
+        raise HTTPException(status_code=400, detail="Se necesitan al menos 2 mediciones válidas para el análisis de Wenner.")
+
     try:
-        PI = math.pi
+        # ── PASO 1: Procesar Resistividad Aparente (Wenner) ──
+        detalle_wenner = []
+        suma_rhos = 0.0
+        
+        for med in datos.mediciones:
+            rho_a = 2 * math.pi * med.a * med.R
+            suma_rhos += rho_a
+            detalle_wenner.append({"a": med.a, "R": med.R, "rho_a": rho_a})
 
-        # ── Parámetros geométricos derivados ──────────────────────────────
-        Lc = 9 * datos.Ly + 6 * datos.Lx
-        dc = math.sqrt(datos.seccion * 1e-6 * 4 / PI)
-        A  = datos.Lx * datos.Ly
-        K1 = -0.05 * (datos.Lx / datos.Ly) + 1.2
-        K2 =  0.10 * (datos.Lx / datos.Ly) + 4.68
-        dr = 2.54 / 2 / 100  # Varilla de 1" de diámetro convertida a metros
+        valores_rho = [m["rho_a"] for m in detalle_wenner]
+        rho_promedio = suma_rhos / len(valores_rho)
+        rho_max = max(valores_rho)
+        rho_min = min(valores_rho)
+        delta_pct = ((rho_max - rho_min) / rho_promedio) * 100
+        uniforme = delta_pct < 30.0
 
-        # Evitar divisiones por cero o logaritmos de números negativos por datos inconsistentes
-        if dc * datos.h <= 0 or A <= 0:
-            raise ValueError("Las dimensiones geométricas resultan en valores inconsistentes.")
+        # ── PASO 2: Geometría de la Malla (Sverak) ──
+        N1 = (datos.Ly / datos.D) + 1
+        L1 = N1 * datos.Lx
 
-        # ── Resistencia de la malla sola (R1) ──────────────────
-        R1 = (datos.rho / (PI * Lc)) * (
-            math.log(2 * Lc / math.sqrt(dc * datos.h))
-            + K1 * (Lc / math.sqrt(A))
-            - K2
-        )
+        N2 = (datos.Lx / datos.D) + 1
+        L2 = N2 * datos.Ly
 
-        # ── Resistencia de las varillas solas (R2) ─────────────
-        R2 = (datos.rho / (2 * PI * datos.nr * datos.Lr)) * (
-            math.log(8 * datos.Lr / dr)
-            - 1
-            + (2 * K1 * datos.Lr / math.sqrt(A)) * (math.sqrt(datos.nr) - 1) ** 2
-        )
+        Lc = L1 + L2
+        Lr_tot = datos.nr * datos.Lr
+        LT = Lc + Lr_tot
+        A = datos.Lx * datos.Ly
 
-        # ── Resistencia mutua malla-varillas (Rm) ──────────────
-        Rm = (datos.rho / (PI * Lc)) * (
-            math.log(2 * Lc / datos.Lr)
-            + K1 * (Lc / math.sqrt(A))
-            - K2
-            + 1
-        )
+        # ── PASO 3: Cálculos de Resistencia (Sverak) ──
+        term1 = 1 / LT
+        raiz_20A = math.sqrt(20 * A)
+        term2_base = 1 / raiz_20A
+        raiz_20_A = math.sqrt(20 / A)
+        h_factor = datos.h * raiz_20_A
+        term2_paren = 1 + 1 / (1 + h_factor)
+        term2 = term2_base * term2_paren
 
-        # Evitar errores en la ecuación combinada si el denominador se aproxima a cero
-        denominador = R1 + R2 - 2 * Rm
-        if abs(denominador) < 1e-7:
-            raise ValueError("Error de indeterminación matemática en el sistema combinatorio.")
-
-        # ── Resistencia total combinada (R) ────────────────────
-        R = (R1 * R2 - Rm ** 2) / denominador
+        # Resistencia final de la red
+        Rg = rho_promedio * (term1 + term2)
 
         return {
             "status": "success",
-            "Lc": Lc,
-            "dc": dc,
-            "A": A,
-            "K1": K1,
-            "K2": K2,
-            "dr": dr,
-            "R1": R1,
-            "R2": R2,
-            "Rm": Rm,
-            "R": R,
-            "cumple": R <= datos.rlim
+            "wenner": {
+                "detalle": detalle_wenner,
+                "rho_promedio": rho_promedio,
+                "rho_max": rho_max,
+                "rho_min": rho_min,
+                "delta_pct": delta_pct,
+                "uniforme": uniforme
+            },
+            "sverak": {
+                "N1": N1, "L1": L1,
+                "N2": N2, "L2": L2,
+                "Lc": Lc,
+                "Lr_tot": Lr_tot,
+                "LT": LT,
+                "A": A,
+                "term1": term1,
+                "term2": term2,
+                "Rg": Rg
+            },
+            "cumple": Rg <= datos.rlim
         }
 
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ZeroDivisionError:
+        raise HTTPException(status_code=400, detail="Error matemático: Verifique que la separación D o las dimensiones no generen divisiones por cero.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error interno procesando los cálculos.")
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
-# -----------------------------------------------------------------------------
-# EJECUCIÓN DEL SERVIDOR
-# -----------------------------------------------------------------------------
 if __name__ == "__main__":
     import uvicorn
-    # Corre el servidor local en el puerto 8000
     uvicorn.run(app, host="127.0.0.1", port=8000)
