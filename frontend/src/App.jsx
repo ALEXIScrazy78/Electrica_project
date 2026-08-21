@@ -2,8 +2,9 @@ import React, { useState, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid, Html } from '@react-three/drei';
 
-// 1. IMPORTAMOS EL NUEVO COMPONENTE INDEPENDIENTE
+// Importación del módulo de Aislamiento y del nuevo Chatbot IA
 import ModuloAislamiento from './ModuloAislamiento';
+import { Chatbot } from './components/Chatbot';
 
 // ============================================================================
 // COMPONENTE 3D: Escena con Etiquetas (Intacto)
@@ -413,6 +414,10 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {/* ─── COMPONENTE CHATBOT FLOTANTE DE IA ─── */}
+      {/* Al pasarle `resultados`, el chatbot sabrá los valores calculados de la Malla de Tierra */}
+      <Chatbot contextoActual={resultados} />
 
     </div>
   );

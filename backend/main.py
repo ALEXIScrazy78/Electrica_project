@@ -4,10 +4,13 @@ from pydantic import BaseModel, Field
 from typing import List
 import math
 
+# --- IMPORTACIÓN DEL NUEVO MÓDULO DEL CHATBOT ---
+from chatbot import SolicitudChat, RespuestaChat, responder_consulta_asistente
+
 app = FastAPI(
-    title="API de Ingeniería Eléctrica - Mallas & Coordinación",
-    description="Backend unificado para cálculo de puesta a tierra (IEEE-80) y coordinación de aislamiento (IEC 60071-2).",
-    version="2.1.0"
+    title="API de Ingeniería Eléctrica - Mallas, Coordinación & Asistente IA",
+    description="Backend unificado para cálculo de puesta a tierra (IEEE-80), coordinación de aislamiento (IEC 60071-2) y chatbot técnico con Gemini.",
+    version="2.2.0"
 )
 
 app.add_middleware(
@@ -263,6 +266,19 @@ def calcular_coordinacion_aislamiento(d: DatosAislamiento):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en motor de aislamiento: {str(e)}")
+
+
+import traceback
+
+@app.post("/api/chatbot", response_model=RespuestaChat)
+def endpoint_chatbot(solicitud: SolicitudChat):
+    try:
+        respuesta_texto = responder_consulta_asistente(solicitud)
+        return RespuestaChat(respuesta=respuesta_texto, status="success")
+    except ValueError as ve:
+        raise HTTPException(status_code=500, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno del chatbot: {str(e)}")
 
 
 if __name__ == "__main__":
