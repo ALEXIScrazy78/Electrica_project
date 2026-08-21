@@ -1,4 +1,6 @@
-const API_BASE_URL = 'http://127.0.0.1:8000/api';
+// Detecta la variable de Vercel en producción; si no existe, usa localhost para desarrollo
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const API_BASE_URL = `${BASE_URL}/api`;
 
 /**
  * Envia una consulta técnica al chatbot de la API con contexto opcional.
