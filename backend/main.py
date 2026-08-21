@@ -9,14 +9,14 @@ from chatbot import SolicitudChat, RespuestaChat, responder_consulta_asistente
 
 app = FastAPI()
 
-origins = [
-    "http://localhost:5173",
-    "https://electrica-project.vercel.app",  # Cambia por tu URL exacta de Vercel
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins, # O usa ["*"] durante pruebas iniciales
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    # Acepta cualquier subdominio terminado en .vercel.app
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
