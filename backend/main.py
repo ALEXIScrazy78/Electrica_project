@@ -7,15 +7,16 @@ import math
 # --- IMPORTACIÓN DEL NUEVO MÓDULO DEL CHATBOT ---
 from chatbot import SolicitudChat, RespuestaChat, responder_consulta_asistente
 
-app = FastAPI(
-    title="API de Ingeniería Eléctrica - Mallas, Coordinación & Asistente IA",
-    description="Backend unificado para cálculo de puesta a tierra (IEEE-80), coordinación de aislamiento (IEC 60071-2) y chatbot técnico con Gemini.",
-    version="2.2.0"
-)
+app = FastAPI()
+
+origins = [
+    "http://localhost:5173",
+    "https://electrica-project.vercel.app",  # Cambia por tu URL exacta de Vercel
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins, # O usa ["*"] durante pruebas iniciales
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
